@@ -1,8 +1,6 @@
-# Assignment 6 - Monitoring with Datadog
+# Assignment 5 - Kubernetes & Terraform
 
-Add observability to your application using Datadog. By the end of this assignment your app will report real user interactions via Datadog RUM, send structured logs from your API, and display the health of the application on a custom dashboard.
-
-This assignment continues where Assignment 5 left off — you will copy your Assignment 5 project into this repository and add monitoring on top of it.
+Provision a local Kubernetes cluster with Terraform and set up a continuous deployment pipeline using GitHub Actions. By the end of this assignment your code will be automatically built, loaded into a local Kind cluster, and deployed on every push to `main`.
 
 **Group size:** 1 person
 
@@ -10,212 +8,212 @@ This assignment continues where Assignment 5 left off — you will copy your Ass
 
 ## Prerequisites
 
-- Complete Assignment 5 (Kubernetes & Terraform)
+- Complete Week 9 in-class exercise (Kubernetes)
+- Complete Week 10 in-class exercise (Terraform)
 - [Bun](https://bun.sh/) version 1.3 or later installed
-- [Docker](https://docs.docker.com/get-docker/) installed and running
-- [Kind](https://kind.sigs.k8s.io/) cluster from Assignment 5 still running (verify with `kubectl get nodes`)
-- A [Datadog](https://www.datadoghq.com/) account — students can get free access via the [GitHub Student Developer Pack](https://education.github.com/pack)
+- [Docker](https://docs.docker.com/get-docker/) installed **and running** (verify with `docker info`)
+- [Kind](https://kind.sigs.k8s.io/) installed
+- [kubectl](https://kubernetes.io/docs/tasks/tools/) installed
+- [Terraform](https://developer.hashicorp.com/terraform/install) installed
 
 ## Setup
 
-1. Accept the GitHub Classroom assignment and clone this repository
-2. Copy your **Assignment 5** project files into this repository (everything except the `.git` directory):
+1. Clone your repository and `cd` into it
+2. Run `bun install`
+3. Run `bun run start` to verify the app runs at http://localhost:3000
 
-   ```bash
-   # From inside your new assignment-6 directory
-   cp -r ../assignment-5-k8s-terraform/* .
-   cp ../assignment-5-k8s-terraform/.github .
-   cp ../assignment-5-k8s-terraform/.gitignore . 2>/dev/null
-   ```
+## Commands
 
-   > **Note:** Adjust the path above if your Assignment 5 directory has a different name or location. The goal is to bring over all your source code, Dockerfile, Kubernetes manifests, Terraform config, and GitHub Actions workflow.
+- `bun run start` - Start the server
+- `bun run test` - Run test suite
 
-3. Run `bun install` and verify the app starts with `bun run start`
-4. Commit the initial copy as your starting point
+---
+
+## The Starter Project
+
+This repository contains a simple Bun HTTP server and the infrastructure files needed to run it on a local Kubernetes cluster. Take a moment to read through the code before starting.
+
+| File / Directory | Description |
+|---|---|
+| `src/index.ts` | HTTP server with `/` and `/health` routes — responds with hostname and timestamp |
+| `Dockerfile` | Containerizes the app using `oven/bun:latest` |
+| `terraform/` | Terraform config that creates a Kind cluster and registers a GitHub Actions runner |
+| `scripts/setup-runner.sh` | Creates the Kind cluster and registers the self-hosted runner |
+| `scripts/teardown.sh` | Unregisters the runner and deletes the Kind cluster |
+| `k8s/kind-config.yaml` | Kind cluster configuration with port 30080 mapped to host |
+| `k8s/deployment.yaml` | Kubernetes Deployment — 2 replicas, `imagePullPolicy: Never` |
+| `k8s/service.yaml` | Kubernetes Service — NodePort on port 30080 |
+| `.github/workflows/deploy.yml` | CI/CD workflow — builds, loads into Kind, deploys |
 
 ---
 
 ## The Assignment
 
-### Task 1: Create a Datadog Account (Commit 1)
+### Task 1: Generate a Runner Token (Commit 1)
 
-Before adding monitoring, you need a Datadog account and application credentials.
+Before Terraform can register your machine as a GitHub Actions runner, you need a registration token.
 
-**1a. Sign up for Datadog**
+**1a. Generate a runner registration token**
 
-1. Go to [datadoghq.com](https://www.datadoghq.com/) and create a free account (use the GitHub Student Developer Pack if available)
-2. Once logged in, you will land on the Datadog dashboard
+1. Go to your repository on GitHub
+2. Navigate to **Settings > Actions > Runners**
+3. Click **"New self-hosted runner"**
+4. Copy the **token** shown in the configuration section (it starts with `A` and is valid for 1 hour)
 
-**1b. Create a RUM Application**
+> **Important:** The token expires in **1 hour**. Do **not** generate it now if you plan to take a break before Task 2. Generate it immediately before running `terraform apply` in the next task. If your token expires, simply generate a new one by repeating step 1a.
 
-1. In Datadog, navigate to **Digital Experience > Real User Monitoring > Applications** (or search for "RUM" in the sidebar)
-2. Click **"New Application"**
-3. Select **JavaScript (JS)** as the application type
-4. Give your application a name (e.g., `assignment-6-todo`)
-5. Note down the **Application ID** and **Client Token** — you will need these in the next task
+**1b. Create your Terraform variables file**
 
-> **Important:** Your Application ID and Client Token are not secrets in the traditional sense (they are included in client-side code), but you should still avoid hardcoding them directly. Use environment variables to keep your code clean and configurable.
-
-**1c. Add environment variables**
-
-Add the following to your `.env` file (create one if it doesn't exist):
+Copy the example file and fill in your values:
 
 ```bash
-DATADOG_APPLICATION_ID=your-application-id
-DATADOG_CLIENT_TOKEN=your-client-token
+cp terraform/terraform.tfvars.example terraform/terraform.tfvars
 ```
 
-> **Note:** Make sure `.env` is in your `.gitignore` — it should never be committed.
+Edit `terraform/terraform.tfvars` with your repository name and the runner token:
+
+```hcl
+github_repo  = "your-username/assignment-5-k8s-terraform"
+runner_token = "AXXXXXXXXXXXXXXXXXXXXXXXXXX"
+```
+
+> **Note:** `terraform.tfvars` is gitignored — it contains a sensitive token and should never be committed.
 
 **Commit your changes with a descriptive message.**
 
 ---
 
-### Task 2: Add Datadog RUM (Commit 2)
+### Task 2: Provision the Cluster and Runner with Terraform (Commit 2)
 
-Add the Datadog Real User Monitoring (RUM) SDK to track page views, user interactions, and frontend errors.
+Use Terraform to create a Kind cluster and register your machine as a self-hosted runner.
 
-**2a. Install the RUM SDK**
+> **Before you begin:** Make sure Docker is running. Run `docker info` and verify you see server information (not a connection error). If Docker is not running, start Docker Desktop / Rancher Desktop and wait until `docker info` succeeds.
+
+**2a. Initialize Terraform**
 
 ```bash
-bun add @datadog/browser-rum
+cd terraform
+terraform init
 ```
 
-**2b. Initialize RUM in your application**
+This downloads the `hashicorp/null` and `hashicorp/local` providers.
 
-Create a client-side component (or add to an existing one) that initializes the Datadog RUM SDK. The initialization should run once when the application loads.
+**2b. Review the plan**
 
-```typescript
-import { datadogRum } from '@datadog/browser-rum';
-
-datadogRum.init({
-  applicationId: process.env.DATADOG_APPLICATION_ID,
-  clientToken: process.env.DATADOG_CLIENT_TOKEN,
-  site: 'datadoghq.com',
-  service: 'assignment-6-todo',
-  env: 'production',
-  sessionSampleRate: 100,
-  sessionReplaySampleRate: 100,
-  trackUserInteractions: true,
-  trackResources: true,
-  trackLongTasks: true,
-});
+```bash
+terraform plan
 ```
 
-> **Note:** If you are using a framework with server-side rendering (e.g., Next.js), make sure the RUM initialization only runs on the **client side**. Use a `"use client"` directive or wrap it in a `useEffect` hook.
+Read the output. The plan should show a single `null_resource.cluster_and_runner` that will execute `scripts/setup-runner.sh`.
 
-**2c. Verify RUM is working**
+**2c. Apply**
 
-1. Start your application locally (`bun run start` or deploy to the cluster)
-2. Open the app in your browser and interact with it (create a todo, mark one as complete, etc.)
-3. In Datadog, navigate to **Digital Experience > Real User Monitoring > Sessions**
-4. You should see your session appear with page views and actions
+```bash
+terraform apply
+```
+
+Type `yes` to confirm. This will:
+
+1. Create a Kind cluster called `assignment-5` using the config in `k8s/kind-config.yaml`
+2. Download the GitHub Actions runner for your OS and architecture
+3. Register the runner with labels `self-hosted, local, kind`
+4. Start the runner as a system service (or as a background process if `sudo` is unavailable)
+
+**2d. Verify**
+
+Run the following commands to confirm the cluster is working:
+
+```bash
+kubectl get nodes
+```
+
+You should see a single node with status `Ready`.
+
+Then go to your repository on GitHub: **Settings > Actions > Runners**. You should see a runner named `kind-runner` with status **Idle**.
+
+> **Runner showing Offline?** The runner process may not have started successfully. You can start it manually:
+>
+> ```bash
+> cd ~/actions-runner && ./run.sh
+> ```
+>
+> Leave this terminal open — the runner must stay running for CI/CD to work. Once it connects, you should see `Listening for Jobs` in the output and the status on GitHub should change to **Idle**.
 
 **Commit your changes with a descriptive message.**
 
 ---
 
-### Task 3: Add Datadog Logging (Commit 3)
+### Task 3: Deploy Manually to Verify the Setup (Commit 3)
 
-Add structured logging to your API routes so you have visibility into what is happening on the server side.
+Before relying on CI/CD, verify the full pipeline works by running the steps manually.
 
-**3a. Install the Datadog browser logs SDK**
+**3a. Build the Docker image**
 
 ```bash
-bun add @datadog/browser-logs
+docker build -t app:test .
 ```
 
-**3b. Initialize the logs SDK**
+**3b. Load the image into Kind**
 
-Add the logs initialization alongside your RUM initialization:
+Kind runs Kubernetes inside Docker containers, so your local images are not automatically available to the cluster. You need to load them explicitly:
 
-```typescript
-import { datadogLogs } from '@datadog/browser-logs';
-
-datadogLogs.init({
-  clientToken: process.env.DATADOG_CLIENT_TOKEN,
-  site: 'datadoghq.com',
-  service: 'assignment-6-todo',
-  env: 'production',
-  forwardErrorsToLogs: true,
-  sessionSampleRate: 100,
-});
+```bash
+kind load docker-image app:test --name assignment-5
 ```
 
-**3c. Add structured logging to your API routes**
+**3c. Deploy to the cluster**
 
-Add log statements to your API routes. At minimum, log the following events:
+Replace the `IMAGE_TAG` placeholder in the deployment manifest and apply:
 
-- **Todo creation** — log when a new todo is created (include the todo title)
-- **Todo updates** — log when a todo is updated (include the todo ID and what changed)
-- **Todo deletion** — log when a todo is deleted (include the todo ID)
-- **Errors** — log any errors that occur in the API routes (include the error message and relevant context)
-
-Example:
-
-```typescript
-import { datadogLogs } from '@datadog/browser-logs';
-
-// When a todo is created
-datadogLogs.logger.info('Todo created', {
-  todoId: newTodo.id,
-  title: newTodo.title,
-});
-
-// When an error occurs
-datadogLogs.logger.error('Failed to create todo', {
-  error: error.message,
-});
+```bash
+sed 's|IMAGE_TAG|test|g' k8s/deployment.yaml | kubectl apply -f -
+kubectl apply -f k8s/service.yaml
 ```
 
-> **Note:** Logs should include relevant context so that when you are debugging an issue, you can trace what happened. Think about what information would be useful if something went wrong in production.
+**3d. Verify the deployment**
 
-**3d. Verify logs are appearing**
+```bash
+kubectl rollout status deployment/app --timeout=60s
+kubectl get pods -l app=app
+```
 
-1. Interact with your application (create, update, and delete todos)
-2. In Datadog, navigate to **Logs > Search**
-3. Filter by service `assignment-6-todo`
-4. You should see your structured log entries appearing
+You should see 2 pods running. Visit http://localhost:30080 to confirm the app responds with the hostname and timestamp.
 
 **Commit your changes with a descriptive message.**
 
 ---
 
-### Task 4: Create a Datadog Dashboard (Commit 4)
+### Task 4: Push to Main and Trigger the CI/CD Pipeline (Commit 4)
 
-Create a dashboard in Datadog that gives you an overview of the health and usage of your application.
+Now test the automated deployment. The workflow at `.github/workflows/deploy.yml` is already configured to build, load, and deploy on every push to `main`.
 
-**4a. Create a new dashboard**
+**4a. Make a visible change**
 
-1. In Datadog, navigate to **Dashboards > New Dashboard**
-2. Give it a descriptive name (e.g., `Assignment 6 - Todo App`)
-3. Choose **New Dashboard** (not "New Screenboard")
+Open `src/index.ts` and change the greeting text (e.g., change `"Hello from Assignment 5!"` to something else).
 
-**4b. Add widgets to the dashboard**
+**4b. Push to main**
 
-Your dashboard should include **at minimum** the following:
-
-- **Page views** — a graph or count of page views over time
-- **User sessions** — number of active user sessions
-- **Top actions** — most common user interactions (button clicks, form submissions, etc.)
-- **Error rate** — frontend errors captured by RUM
-- **Log volume** — count of log entries over time, broken down by level (info, error, etc.)
-
-Feel free to add any additional widgets that you think provide useful information about the health of your application. Think about what you would want to see if you were responsible for keeping this app running in production.
-
-> **Note:** It may take a few minutes for data to appear in Datadog after interacting with your application. If widgets show "No data", make sure you have generated some traffic by using the app.
-
-**4c. Take a screenshot of your dashboard**
-
-Once your dashboard has data, take a screenshot and add it to the `README.md` of your repository:
-
-```markdown
-## Datadog Dashboard
-
-![Datadog Dashboard](./screenshots/dashboard.png)
+```bash
+git add -A
+git commit -m "Update greeting"
+git push origin main
 ```
 
-Create a `screenshots/` directory and add your screenshot there.
+**4c. Watch the workflow**
+
+Go to the **Actions** tab in your repository. You should see the **Deploy** workflow running on your self-hosted runner. It will:
+
+1. Check out the code
+2. Build a Docker image tagged with the short commit SHA
+3. Load the image into the Kind cluster
+4. Update the deployment manifest with the new tag via `sed`
+5. Run `kubectl apply` and wait for the rollout to complete
+
+**4d. Verify the new deployment**
+
+Once the workflow finishes (green checkmark), visit http://localhost:30080. You should see your updated greeting.
+
+Run `kubectl get pods -l app=app` to confirm the pods restarted with the new image.
 
 **Commit your changes with a descriptive message.**
 
@@ -223,37 +221,26 @@ Create a `screenshots/` directory and add your screenshot there.
 
 ### Task 5: Explore and Document (Commit 5)
 
-Answer the following questions by adding an `ANSWERS.md` file to the root of your repository (or appending to it if it already exists from Assignment 5).
+Answer the following questions by adding a `ANSWERS.md` file to the root of your repository.
 
-1. What is Datadog RUM and how does it differ from backend/server logging?
-2. Why is it important to include context (e.g., todo ID, user action) in log messages rather than just logging "error occurred"?
-3. What metrics would you monitor if this application had real users? Name at least three and explain why each is important.
-4. What is the difference between RUM session replay and traditional logging when debugging a user-reported issue?
+1. What is the difference between `docker` and `containerd`? Why does Kind use containerd under the hood?
+2. Why does the deployment use `imagePullPolicy: Never`?
+3. What would need to change if you wanted to deploy to a remote Kubernetes cluster instead of a local one?
+4. What are the advantages and disadvantages of using a self-hosted runner compared to GitHub-hosted runners?
 
 **Commit your answers with a descriptive message.**
 
 ---
 
-## Redeploy to the Cluster (Optional)
+## Cleaning Up
 
-If you want your monitored application running on the Kind cluster from Assignment 5, rebuild and redeploy:
+When you are done with the assignment, run the teardown script to unregister the runner and delete the cluster:
 
 ```bash
-# Build the new image with monitoring included
-docker build -t app:monitoring .
-
-# Load into Kind
-kind load docker-image app:monitoring --name assignment-5
-
-# Update and apply the deployment
-sed 's|IMAGE_TAG|monitoring|g' k8s/deployment.yaml | kubectl apply -f -
-kubectl apply -f k8s/service.yaml
-
-# Wait for rollout
-kubectl rollout status deployment/app --timeout=60s
+GITHUB_REPO=owner/repo RUNNER_TOKEN=<new-token> bash scripts/teardown.sh
 ```
 
-Visit http://localhost:30080 to verify the app is running with Datadog monitoring enabled.
+> **Note:** You will need to generate a new runner token since the original one has expired. `teardown.sh` is not run by `terraform destroy` — it must be run manually.
 
 ---
 
@@ -261,22 +248,24 @@ Visit http://localhost:30080 to verify the app is running with Datadog monitorin
 
 1. Ensure you have at least **5 commits** (one per task)
 2. Verify the following before submitting:
-   - Datadog RUM is initialized and capturing sessions (visible in Datadog)
-   - Structured logging is added to API routes (visible in Datadog Logs)
-   - A Datadog dashboard exists with at least the required widgets
-   - A screenshot of the dashboard is included in `README.md`
-   - `ANSWERS.md` contains answers to all four questions
-3. Make sure the dashboard screenshot(s) are **clear and visible** in the README
-4. Submit the GitHub repository link to Canvas
+   - The self-hosted runner is visible and online in **Settings > Actions > Runners**
+   - The Deploy workflow has at least one successful run (green checkmark) in the **Actions** tab
+   - The app is accessible at http://localhost:30080
+3. Submit the GitHub repository link to Canvas
 
 ## Tips & Troubleshooting
 
-- **No data in Datadog?** It can take a few minutes for data to appear. Make sure you have interacted with the app after initializing the SDKs. Check the browser console for any initialization errors.
-- **RUM not initializing?** Make sure the initialization code runs on the client side. If using a framework with SSR, wrap it in `useEffect` or use a `"use client"` directive.
-- **Environment variables not loading?** If your framework requires a prefix for client-side env vars (e.g., `NEXT_PUBLIC_` in Next.js), update your variable names accordingly.
-- **Logs not appearing?** Verify your client token is correct and that `forwardErrorsToLogs` is enabled. Check the browser console network tab for requests to `browser-intake-datadoghq.com`.
-- **Dashboard shows "No data"?** Make sure the time range in the top-right corner of the dashboard covers the period when you were using the app. Try setting it to "Past 1 Hour".
-- **Free account limitations?** The Datadog free tier (or Student Pack) may have data retention limits. Complete the assignment within a reasonable timeframe so your data is still available.
-- Remember what you learned in Assignment 5 — your cluster and deployment setup carries over to this assignment.
+- **Token expired?** If `terraform apply` fails during runner registration, your token likely expired. Generate a new one from **Settings > Actions > Runners > New self-hosted runner** and update `terraform/terraform.tfvars`
+- **Docker not running?** Both Kind and the CI/CD pipeline need Docker. Run `docker info` to check. If you see a connection error, start Docker Desktop / Rancher Desktop and wait for it to be ready
+- **Runner showing Offline?** The runner process must be running on your machine for GitHub Actions to pick up jobs. Start it manually with `cd ~/actions-runner && ./run.sh` and keep the terminal open
+- **Runner not picking up jobs?** If the workflow is stuck on "Queued", make sure the runner is connected (`Listening for Jobs` in the terminal). Also verify the runner labels match the workflow (`self-hosted, local, kind`)
+- **`ImagePullBackOff` error?** The image was not loaded into Kind. Rerun `kind load docker-image app:<tag> --name assignment-5`
+- **Debugging application issues:** Use `kubectl logs deployment/app` to see application logs
+- **Debugging pod issues:** Use `kubectl describe pod <pod-name>` to see detailed pod events and error messages
+- **Terraform state issues?**
 
-Good luck and have fun :)
+Manual deployment to Kind verified successfully on my machine.
+ If you need to re-run the setup script, use `terraform taint null_resource.cluster_and_runner` then `terraform apply`
+
+## Runner Setup
+Self-hosted runner successfully configured and connected to GitHub.
