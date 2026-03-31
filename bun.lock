@@ -5,11 +5,18 @@
     "": {
       "name": "assignment-6-eyjolfur",
       "dependencies": {
+        "@datadog/browser-rum": "^6.32.0",
         "pino": "^9.6.0",
       },
     },
   },
   "packages": {
+    "@datadog/browser-core": ["@datadog/browser-core@6.32.0", "", {}, "sha512-ikok4zYmoZFcOcIlzFFtImgJXUzAKc1j2zQ6JvAMso7L9xs0BmgFPF1E2Kag03PJ6jddB7QJ7ADjiOTwt6hW+Q=="],
+
+    "@datadog/browser-rum": ["@datadog/browser-rum@6.32.0", "", { "dependencies": { "@datadog/browser-core": "6.32.0", "@datadog/browser-rum-core": "6.32.0" }, "peerDependencies": { "@datadog/browser-logs": "6.32.0" }, "optionalPeers": ["@datadog/browser-logs"] }, "sha512-frBWGQSbxMmE9nA0A2PF9Y4kHe4MjaFQxSmFrJUCAVEkwQh//Cp1+vW+FoxIJaR14Sah9zIWzIQF3DiuBzMCqw=="],
+
+    "@datadog/browser-rum-core": ["@datadog/browser-rum-core@6.32.0", "", { "dependencies": { "@datadog/browser-core": "6.32.0" } }, "sha512-VK1xa4bd8zxkbkkh53yhbiKy0rPqOP+YWcqGHoJguhRuUwY45rBa+iBSCn+MBdPmTI1cbfBjc6hxNuBxWHkN1Q=="],
+
     "@pinojs/redact": ["@pinojs/redact@0.4.0", "", {}, "sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg=="],
 
     "atomic-sleep": ["atomic-sleep@1.0.0", "", {}, "sha512-kNOjDqAh7px0XWNI+4QbzoiR/nTkHAWNud2uvnJquD1/x5a7EQZMJT0AczqK0Qn67oY/TTQ1LbUKajZpp3I9tQ=="],
