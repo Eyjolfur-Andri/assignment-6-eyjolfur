@@ -58,7 +58,7 @@ function renderPage() {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Assignment 6 Todo App</title>
+  <title>Assignment 6 Todo App - CI/CD Updated</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -106,7 +106,7 @@ function renderPage() {
   </style>
 </head>
 <body>
-  <h1>Assignment 6 Todo App</h1>
+  <h1>Assignment 6 Todo App - CI/CD Updated</h1>
   <p class="muted">Bun + Datadog RUM + structured logging</p>
 
   <div id="error" class="error"></div>
